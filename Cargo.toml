@@ -1,0 +1,27 @@
+[package]
+name = "soroban-tic-tac-toe"
+version = "0.0.0"
+authors = ["Stellar Development Foundation <info@stellar.org>"]
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "0.2.1"
+
+[dev_dependencies]
+soroban-sdk = { version = "0.2.1", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
