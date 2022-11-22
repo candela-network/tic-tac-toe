@@ -31,15 +31,21 @@ fn test_play() {
     let contract_id = env.register_contract(None, TicTacToeContract);
     let client = TicTacToeContractClient::new(&env, &contract_id);
 
-    let id: [u8; 4] = 42_u32.to_be_bytes();
-    let r = client.play(&bytesn!(&env, [id[0], id[1], id[2], id[3]]), &symbol!("test"));
+    let user_1 = env.accounts().generate();
+    let user_2 = env.accounts().generate();
 
-    assert_eq!(r, PlayResult::NOTFOUND(42));
+    client.with_source_account(&user_1).launch();
+    client.with_source_account(&user_2).launch();
+
+    let r = client.with_source_account(&user_1).play(&1, &bytesn!(&env, [0, 0]));
+
+    assert_eq!(r, PlayResult::NEXT(1));
 
     std::println!("{:?}", r);
 }
 
 #[test]
+#[should_panic(expected = "Status(ContractError(2))")]
 fn test_not_found() {
     let env = Env::default();
     let contract_id = env.register_contract(None, TicTacToeContract);
@@ -51,12 +57,7 @@ fn test_not_found() {
     client.with_source_account(&user_1).launch();
     client.with_source_account(&user_2).launch();
 
-    let id: [u8; 4] = 42_u32.to_be_bytes();
-    let r = client.with_source_account(&user_1).play(&bytesn!(&env, [id[0], id[1], id[2], id[3]]), &symbol!("test"));
-
-    assert_eq!(r, PlayResult::NOTFOUND(42));
-
-    std::println!("{:?}", r);
+    client.with_source_account(&user_1).play(&42, &bytesn!(&env, [0, 0]));
 }
 
 #[test]
@@ -73,8 +74,39 @@ fn test_invalid_player() {
     client.with_source_account(&user_1).launch();
     client.with_source_account(&user_2).launch();
 
-    let id: [u8; 4] = 1_u32.to_be_bytes();
-    let r = client.with_source_account(&user_3).play(&bytesn!(&env, [id[0], id[1], id[2], id[3]]), &symbol!("test"));
+    client.with_source_account(&user_3).play(&1, &bytesn!(&env, [0, 0]));
+}
 
-    assert_eq!(r, PlayResult::NEXT);
+#[test]
+#[should_panic(expected = "Status(ContractError(4))")]
+fn test_move_out_bound1() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, TicTacToeContract);
+    let client = TicTacToeContractClient::new(&env, &contract_id);
+
+    let user_1 = env.accounts().generate();
+    let user_2 = env.accounts().generate();
+
+    client.with_source_account(&user_1).launch();
+    client.with_source_account(&user_2).launch();
+
+    client.with_source_account(&user_1).play(&1, &bytesn!(&env, [3, 0]));
+
+}
+
+#[test]
+#[should_panic(expected = "Status(ContractError(4))")]
+fn test_move_out_bound2() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, TicTacToeContract);
+    let client = TicTacToeContractClient::new(&env, &contract_id);
+
+    let user_1 = env.accounts().generate();
+    let user_2 = env.accounts().generate();
+
+    client.with_source_account(&user_1).launch();
+    client.with_source_account(&user_2).launch();
+
+    client.with_source_account(&user_1).play(&1, &bytesn!(&env, [0, 3]));
+
 }
