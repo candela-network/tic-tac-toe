@@ -39,6 +39,9 @@ fn test_play() {
 
     let r = client.with_source_account(&user_1).play(&1, &bytesn!(&env, [0, 0]));
 
+    let logs = env.logger().all();
+    std::println!("{}", logs.join("\n"));
+
     assert_eq!(r, PlayResult::NEXT(1));
 
     std::println!("{:?}", r);

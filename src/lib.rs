@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     bytes, contracterror, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN,
-    Env, Symbol, bytesn,
+    Env, Symbol, bytesn, log,
 };
 
 #[contracttype]
@@ -40,6 +40,35 @@ enum InvalidErrorCode {
     MoveOutOfBound = 4,
     InvalidMove = 5,
 }
+
+const SOLUTION: [[i32; 8]; 2] = [
+
+    [111000000,
+    111000,
+    111,
+    100100100,
+    10010010,
+    1001001,
+    100010001,
+    1010100],
+    [222000000,
+    222000,
+    222,
+    200200200,
+    20020020,
+    2002002,
+    200020002,
+    2020200],
+
+    // [1, 1, 1, 0, 0, 0, 0, 0, 0],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    // [0, 0, 0, 0, 0, 0, 1, 1, 1],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+];
 
 pub struct TicTacToeContract;
 
@@ -91,13 +120,29 @@ impl TicTacToeContract {
 
         let player_value = (game.next % 2) + 1;
         let mut mgame = game;
-        mgame.board.to_array()[played_move] = player_value as u8;
-        mgame.next += 1;
+        let mut board_array = mgame.board.to_array();
+        board_array[played_move] = player_value as u8;
+        // mgame.board = bytesn!(&env, &...board_array);
 
-        env.data().set(
-            DataKey::RUNNING(game_id),
-            mgame,
-        );
+        let player_idx: usize = (mgame.next % 2) as usize;
+
+        
+        let mut current: u32 = 0;
+        for b in 0..board_array.len() {
+            current += board_array[b] as u32 * 10_u32.pow(b as u32);
+            log!(&env, "{}", b as u32);
+        }
+
+        log!(&env, "{}", current);
+        for i in SOLUTION[player_idx] {
+            
+        }
+
+        mgame.next += 1;
+        // env.data().set(
+        //     DataKey::RUNNING(game_id),
+        //     mgame,
+        // );
 
 
         PlayResult::NEXT(game_id)
