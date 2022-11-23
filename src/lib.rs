@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    bytes, contracterror, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN,
-    Env, Symbol, bytesn, log,
+    bigint, contracterror, contractimpl, contracttype, panic_with_error, Address, BigInt, BytesN,
+    Env,
 };
 
 #[contracttype]
@@ -13,21 +13,20 @@ pub enum DataKey {
 }
 
 #[contracttype]
-#[derive(Clone)]
-struct Game {
+#[derive(Clone, Debug)]
+pub struct Game {
     player1: Address,
     player2: Address,
-    board: BytesN<9>,
+    board: BigInt,
     next: u32,
 }
 
 #[contracttype]
 #[derive(Debug, PartialEq)]
 pub enum PlayResult {
-    NEXT(u32),
-    INVALID(u32),
-    WIN,
-    NOTFOUND(u32),
+    NEXT,
+    WINNER,
+    DRAW,
 }
 
 #[contracterror]
@@ -41,33 +40,15 @@ enum InvalidErrorCode {
     InvalidMove = 5,
 }
 
-const SOLUTION: [[i32; 8]; 2] = [
-
-    [111000000,
-    111000,
-    111,
-    100100100,
-    10010010,
-    1001001,
-    100010001,
-    1010100],
-    [222000000,
-    222000,
-    222,
-    200200200,
-    20020020,
-    2002002,
-    200020002,
-    2020200],
-
-    // [1, 1, 1, 0, 0, 0, 0, 0, 0],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    // [0, 0, 0, 0, 0, 0, 1, 1, 1],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    // [0, 0, 0, 1, 1, 1, 0, 0, 0],
+const SOLUTION: [u32; 8] = [
+    0b111000000,
+    0b000111000,
+    0b000000111,
+    0b100100100,
+    0b010010010,
+    0b001001001,
+    0b100010001,
+    0b001010100,
 ];
 
 pub struct TicTacToeContract;
@@ -94,7 +75,7 @@ impl TicTacToeContract {
                 Game {
                     player1: pending,
                     player2: env.invoker(),
-                    board: bytesn![&env, [0, 0, 0, 0, 0, 0, 0, 0, 0]],
+                    board: bigint![&env, 0x00],
                     next: 0,
                 },
             );
@@ -110,42 +91,36 @@ impl TicTacToeContract {
     }
 
     pub fn play(env: Env, game_id: u32, square: BytesN<2>) -> PlayResult {
-
         let game = Self::get_game(&env, game_id);
         let m = Self::get_square(&env, square);
 
         Self::check_player(&env, &game);
 
+        let player_id = game.next % 2;
         let played_move = Self::get_move(&env, m, &game);
 
-        let player_value = (game.next % 2) + 1;
         let mut mgame = game;
-        let mut board_array = mgame.board.to_array();
-        board_array[played_move] = player_value as u8;
-        // mgame.board = bytesn!(&env, &...board_array);
+        let mut board = mgame.board.to_u32();
 
-        let player_idx: usize = (mgame.next % 2) as usize;
+        // Apply the  move
+        if player_id == 0 {
+            board = board | (played_move << 9);
+        } else {
+            board = board | played_move;
+        };
+        mgame.board = BigInt::from_u32(&env, board);
 
-        
-        let mut current: u32 = 0;
-        for b in 0..board_array.len() {
-            current += board_array[b] as u32 * 10_u32.pow(b as u32);
-            log!(&env, "{}", b as u32);
+        // Get the next game action
+        let result = Self::get_next_action(player_id, board);
+
+        if result == PlayResult::NEXT {
+            mgame.next += 1;
+            env.data().set(DataKey::RUNNING(game_id), mgame);
+        } else {
+            env.data().remove(DataKey::RUNNING(game_id));
         }
 
-        log!(&env, "{}", current);
-        for i in SOLUTION[player_idx] {
-            
-        }
-
-        mgame.next += 1;
-        // env.data().set(
-        //     DataKey::RUNNING(game_id),
-        //     mgame,
-        // );
-
-
-        PlayResult::NEXT(game_id)
+        result
     }
 
     fn get_game(env: &Env, gid: u32) -> Game {
@@ -169,30 +144,51 @@ impl TicTacToeContract {
             panic_with_error!(env, InvalidErrorCode::NotAPlayer);
         }
 
-        if game.next % 2 == 0 && game.player2 == player {
+        if (game.next % 2 == 0 && game.player2 == player)
+            || (game.next % 2 == 1 && game.player1 == player)
+        {
             panic_with_error!(env, InvalidErrorCode::NotYourTurn);
         }
-
-
     }
 
     fn get_square(env: &Env, square: BytesN<2>) -> [u8; 2] {
         let a = square.to_array();
-        if a [0] > 2 || a[1] > 2 {
+        if a[0] > 2 || a[1] > 2 {
             panic_with_error!(env, InvalidErrorCode::MoveOutOfBound);
         }
 
         a
     }
 
-    fn get_move(env: &Env, m: [u8; 2],  game: &Game) -> usize {
-
-        let idx = (m[0] + 3 * m[1]) as usize;
-        if game.board.to_array()[idx] > 0 {
+    fn get_move(env: &Env, m: [u8; 2], game: &Game) -> u32 {
+        let idx: u32 = 1 << (8 - (m[0] + 3 * m[1]));
+        let b = game.board.to_u32() >> 9 & 0x1ff;
+        let c = game.board.to_u32() & 0x1ff;
+        if (b | idx == b) || (c | idx == c) {
             panic_with_error!(env, InvalidErrorCode::InvalidMove);
         }
 
         idx
+    }
+
+    fn get_next_action(player_id: u32, board: u32) -> PlayResult {
+        let b = if player_id == 0 {
+            board >> 9 & 0x1ff
+        } else {
+            board & 0x1ff
+        };
+
+        for s in SOLUTION {
+            if b == s {
+                return PlayResult::WINNER;
+            }
+        }
+
+        if (board >> 9 & 0x1ff | board & 0x1ff) == 0x1ff {
+            return PlayResult::DRAW;
+        }
+
+        PlayResult::NEXT
     }
 }
 
