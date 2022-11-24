@@ -1,7 +1,9 @@
 #![no_std]
+use core::ops::Add;
+
 use soroban_sdk::{
     bigint, contracterror, contractimpl, contracttype, panic_with_error, Address, BigInt, BytesN,
-    Env,
+    Env, symbol, Symbol, log,
 };
 
 #[contracttype]
@@ -22,7 +24,7 @@ pub struct Game {
 }
 
 #[contracttype]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum PlayResult {
     NEXT,
     WINNER,
@@ -38,6 +40,15 @@ enum InvalidErrorCode {
     NotYourTurn = 3,
     MoveOutOfBound = 4,
     InvalidMove = 5,
+}
+
+const EVENT_TOPIC: Symbol = symbol!("Event");
+#[contracttype]
+pub struct TicTacToeEvent {
+    id: u32,
+    game: Game,
+    result: PlayResult,
+    
 }
 
 const SOLUTION: [u32; 8] = [
@@ -115,10 +126,18 @@ impl TicTacToeContract {
 
         if result == PlayResult::NEXT {
             mgame.next += 1;
-            env.data().set(DataKey::RUNNING(game_id), mgame);
+            env.data().set(DataKey::RUNNING(game_id), &mgame);
         } else {
             env.data().remove(DataKey::RUNNING(game_id));
         }
+
+        log!(&env, "board: {}", mgame.board);
+
+        env.events().publish((EVENT_TOPIC, symbol!("play")), TicTacToeEvent {
+            id: game_id,
+            game: mgame,
+            result: result.clone()
+        });
 
         result
     }

@@ -1,12 +1,12 @@
 #![cfg(test)]
 
-use crate::PlayResult;
+use crate::{PlayResult, TicTacToeEvent, Game};
 
 use super::{DataKey, TicTacToeContract, TicTacToeContractClient};
 use soroban_sdk::{
     bytesn,
-    testutils::{Accounts, Logger},
-    Env,
+    testutils::{Accounts, Logger, Events},
+    Env, vec, symbol, IntoVal, Address
 };
 
 extern crate std;
@@ -84,9 +84,63 @@ fn test_play_user1_win() {
         .with_source_account(&user_1)
         .play(&1, &bytesn!(&env, [0, 2]));
 
+        
+    assert_eq!(r, PlayResult::WINNER);
+
+
     let logs = env.logger().all();
     std::println!("{}", logs.join("\n"));
-    assert_eq!(r, PlayResult::WINNER);
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                contract_id.clone(),
+                (symbol!("Event"), symbol!("play")).into_val(&env),
+                TicTacToeEvent {
+                    id: 1,
+                    game: Game{ player1: Address::Account(user_1.clone()), player2: Address::Account(user_2.clone()), board: 0b100000000000000000, next: 1},
+                    result: PlayResult::NEXT
+                }.into_val(&env)
+            ),
+            (
+                contract_id.clone(),
+                (symbol!("Event"), symbol!("play")).into_val(&env),
+                TicTacToeEvent {
+                    id: 1,
+                    game: Game{ player1: Address::Account(user_1.clone()), player2: Address::Account(user_2.clone()), board: 0b100000000000000001, next: 2},
+                    result: PlayResult::NEXT
+                }.into_val(&env)
+            ),
+            (
+                contract_id.clone(),
+                (symbol!("Event"), symbol!("play")).into_val(&env),
+                TicTacToeEvent {
+                    id: 1,
+                    game: Game{ player1: Address::Account(user_1.clone()), player2: Address::Account(user_2.clone()), board: 0b100100000000000001, next: 3},
+                    result: PlayResult::NEXT
+                }.into_val(&env)
+            ),
+            (
+                contract_id.clone(),
+                (symbol!("Event"), symbol!("play")).into_val(&env),
+                TicTacToeEvent {
+                    id: 1,
+                    game: Game{ player1: Address::Account(user_1.clone()), player2: Address::Account(user_2.clone()), board: 0b100100000000001001, next: 4},
+                    result: PlayResult::NEXT
+                }.into_val(&env)
+            ),
+            (
+                contract_id.clone(),
+                (symbol!("Event"), symbol!("play")).into_val(&env),
+                TicTacToeEvent {
+                    id: 1,
+                    game: Game{ player1: Address::Account(user_1.clone()), player2: Address::Account(user_2.clone()), board: 0b100100100000001001, next: 4},
+                    result: PlayResult::WINNER
+                }.into_val(&env)
+            ),
+        ]
+    );
 
     std::println!("{:?}", r);
 }
