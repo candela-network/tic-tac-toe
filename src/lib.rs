@@ -17,7 +17,7 @@ pub enum DataKey {
 pub struct Game {
     player1: Address,
     player2: Address,
-    board: BigInt,
+    board: u32,
     next: u32,
 }
 
@@ -75,7 +75,7 @@ impl TicTacToeContract {
                 Game {
                     player1: pending,
                     player2: env.invoker(),
-                    board: bigint![&env, 0x00],
+                    board: 0x00,
                     next: 0,
                 },
             );
@@ -100,7 +100,7 @@ impl TicTacToeContract {
         let played_move = Self::get_move(&env, m, &game);
 
         let mut mgame = game;
-        let mut board = mgame.board.to_u32();
+        let mut board = mgame.board;
 
         // Apply the  move
         if player_id == 0 {
@@ -108,7 +108,7 @@ impl TicTacToeContract {
         } else {
             board = board | played_move;
         };
-        mgame.board = BigInt::from_u32(&env, board);
+        mgame.board = board;
 
         // Get the next game action
         let result = Self::get_next_action(player_id, board);
@@ -162,8 +162,8 @@ impl TicTacToeContract {
 
     fn get_move(env: &Env, m: [u8; 2], game: &Game) -> u32 {
         let idx: u32 = 1 << (8 - (m[0] + 3 * m[1]));
-        let b = game.board.to_u32() >> 9 & 0x1ff;
-        let c = game.board.to_u32() & 0x1ff;
+        let b = game.board >> 9 & 0x1ff;
+        let c = game.board & 0x1ff;
         if (b | idx == b) || (c | idx == c) {
             panic_with_error!(env, InvalidErrorCode::InvalidMove);
         }
