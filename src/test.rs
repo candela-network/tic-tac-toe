@@ -2,7 +2,7 @@
 
 use crate::{PlayResult, TicTacToeEvent, Game};
 
-use super::{DataKey, TicTacToeContract, TicTacToeContractClient};
+use super::{GameState, TicTacToeContract, TicTacToeContractClient};
 use soroban_sdk::{
     bytesn,
     testutils::{Accounts, Logger, Events},
@@ -23,8 +23,8 @@ fn test_launch() {
     let r1 = client.with_source_account(&user_1).launch();
     let r2 = client.with_source_account(&user_2).launch();
 
-    assert_eq!(r1, DataKey::PENDING);
-    assert_eq!(r2, DataKey::RUNNING(1));
+    assert_eq!(r1, GameState::PENDING);
+    assert_eq!(r2, GameState::RUNNING(1));
 
     std::println!("Log {}", env.logger().all().join("\n"));
 }

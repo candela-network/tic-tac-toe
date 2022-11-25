@@ -1,88 +1,33 @@
 #![no_std]
-use core::ops::Add;
-
-use soroban_sdk::{
-    bigint, contracterror, contractimpl, contracttype, panic_with_error, Address, BigInt, BytesN,
-    Env, symbol, Symbol, log,
-};
-
-#[contracttype]
-#[derive(Debug, PartialEq)]
-pub enum DataKey {
-    PENDING,
-    RUNNING(u32),
-    COUNTER,
-}
-
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct Game {
-    player1: Address,
-    player2: Address,
-    board: u32,
-    next: u32,
-}
-
-#[contracttype]
-#[derive(Debug, PartialEq, Clone)]
-pub enum PlayResult {
-    NEXT,
-    WINNER,
-    DRAW,
-}
-
-#[contracterror]
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum InvalidErrorCode {
-    Unknown = 0,
-    NotAPlayer = 1,
-    GameNotFound = 2,
-    NotYourTurn = 3,
-    MoveOutOfBound = 4,
-    InvalidMove = 5,
-}
-
-const EVENT_TOPIC: Symbol = symbol!("Event");
-#[contracttype]
-pub struct TicTacToeEvent {
-    id: u32,
-    game: Game,
-    result: PlayResult,
-    
-}
-
-const SOLUTION: [u32; 8] = [
-    0b111000000,
-    0b000111000,
-    0b000000111,
-    0b100100100,
-    0b010010010,
-    0b001001001,
-    0b100010001,
-    0b001010100,
-];
+mod helper;
+mod types;
+use crate::types::{Game, GameState, PlayResult, TicTacToeEvent, EVENT_TOPIC};
+use helper::TicTacToeEngine;
+use soroban_sdk::{contractimpl, symbol, Address, BytesN, Env};
 
 pub struct TicTacToeContract;
 
 #[contractimpl]
 impl TicTacToeContract {
-    pub fn launch(env: Env) -> DataKey {
-        let pending: Address = env
-            .data()
-            .get(DataKey::PENDING)
-            .unwrap_or(Ok(env.invoker()))
-            .unwrap();
+    /*
+        Launch a new game.
+        If no one awaits in the lobby, the invoker of launch() will be placed in the lobby (the method return GameState::PENDING)
+        If a GameState::PENDING exists, a game is launched and the play() function can be called the with game_id returned in GameState::RUNNING(game_id).
+        Else, the invoker of launch() will be placed in the lobby (the function returns GameState::PENDING)
+    */
+    pub fn launch(env: Env) -> GameState {
+        let pending: Address = env.data().get(types::GameState::PENDING).unwrap_or(Ok(env.invoker())).unwrap();
 
         if pending != env.invoker() {
-            let mut counter = env.data().get(DataKey::COUNTER).unwrap_or(Ok(0)).unwrap();
+            let mut counter = env.data().get(GameState::COUNTER).unwrap_or(Ok(0)).unwrap();
 
             // Increment game id
             counter += 1;
-            env.data().set(DataKey::COUNTER, counter);
+            env.data().set(GameState::COUNTER, counter);
 
             // Store the new game
             env.data().set(
-                DataKey::RUNNING(counter),
+                GameState::RUNNING(counter),
                 Game {
                     player1: pending,
                     player2: env.invoker(),
@@ -92,122 +37,47 @@ impl TicTacToeContract {
             );
 
             // Clean up pending
-            env.data().remove(DataKey::PENDING);
+            env.data().remove(GameState::PENDING);
 
-            return DataKey::RUNNING(counter);
+            return GameState::RUNNING(counter);
         } else {
-            env.data().set(DataKey::PENDING, pending);
-            return DataKey::PENDING;
+            env.data().set(GameState::PENDING, pending);
+            return GameState::PENDING;
         }
     }
 
+    /*
+        Play a move for a given game id.
+    */
     pub fn play(env: Env, game_id: u32, square: BytesN<2>) -> PlayResult {
-        let game = Self::get_game(&env, game_id);
-        let m = Self::get_square(&env, square);
+        let mut game = TicTacToeEngine::get_game(&env, game_id);
+        let m = TicTacToeEngine::get_square(&env, square);
 
-        Self::check_player(&env, &game);
+        TicTacToeEngine::check_player(&env, &game);
 
-        let player_id = game.next % 2;
-        let played_move = Self::get_move(&env, m, &game);
-
-        let mut mgame = game;
-        let mut board = mgame.board;
-
-        // Apply the  move
-        if player_id == 0 {
-            board = board | (played_move << 9);
-        } else {
-            board = board | played_move;
-        };
-        mgame.board = board;
+        game.board = TicTacToeEngine::check_and_move(&env, m, &game);
 
         // Get the next game action
-        let result = Self::get_next_action(player_id, board);
+        let result = TicTacToeEngine::get_next_action(&game);
 
         if result == PlayResult::NEXT {
-            mgame.next += 1;
-            env.data().set(DataKey::RUNNING(game_id), &mgame);
+            game.next += 1;
+            env.data().set(GameState::RUNNING(game_id), &game);
         } else {
-            env.data().remove(DataKey::RUNNING(game_id));
+            env.data().remove(GameState::RUNNING(game_id));
         }
 
-        log!(&env, "board: {}", mgame.board);
-
-        env.events().publish((EVENT_TOPIC, symbol!("play")), TicTacToeEvent {
-            id: game_id,
-            game: mgame,
-            result: result.clone()
-        });
+        // Publish events
+        env.events().publish(
+            (EVENT_TOPIC, symbol!("play")),
+            TicTacToeEvent {
+                id: game_id,
+                game: game,
+                result: result.clone(),
+            },
+        );
 
         result
-    }
-
-    fn get_game(env: &Env, gid: u32) -> Game {
-        let optgame: Option<Result<Game, _>> = env.data().get(DataKey::RUNNING(gid));
-        match optgame {
-            Some(r) => match r {
-                Ok(g) => g,
-                Err(_) => {
-                    panic_with_error!(&env, InvalidErrorCode::Unknown);
-                }
-            },
-            None => {
-                panic_with_error!(env, InvalidErrorCode::GameNotFound);
-            }
-        }
-    }
-
-    fn check_player(env: &Env, game: &Game) {
-        let player = env.invoker();
-        if game.player1 != player && game.player2 != player {
-            panic_with_error!(env, InvalidErrorCode::NotAPlayer);
-        }
-
-        if (game.next % 2 == 0 && game.player2 == player)
-            || (game.next % 2 == 1 && game.player1 == player)
-        {
-            panic_with_error!(env, InvalidErrorCode::NotYourTurn);
-        }
-    }
-
-    fn get_square(env: &Env, square: BytesN<2>) -> [u8; 2] {
-        let a = square.to_array();
-        if a[0] > 2 || a[1] > 2 {
-            panic_with_error!(env, InvalidErrorCode::MoveOutOfBound);
-        }
-
-        a
-    }
-
-    fn get_move(env: &Env, m: [u8; 2], game: &Game) -> u32 {
-        let idx: u32 = 1 << (8 - (m[0] + 3 * m[1]));
-        let b = game.board >> 9 & 0x1ff;
-        let c = game.board & 0x1ff;
-        if (b | idx == b) || (c | idx == c) {
-            panic_with_error!(env, InvalidErrorCode::InvalidMove);
-        }
-
-        idx
-    }
-
-    fn get_next_action(player_id: u32, board: u32) -> PlayResult {
-        let b = if player_id == 0 {
-            board >> 9 & 0x1ff
-        } else {
-            board & 0x1ff
-        };
-
-        for s in SOLUTION {
-            if b == s {
-                return PlayResult::WINNER;
-            }
-        }
-
-        if (board >> 9 & 0x1ff | board & 0x1ff) == 0x1ff {
-            return PlayResult::DRAW;
-        }
-
-        PlayResult::NEXT
     }
 }
 
