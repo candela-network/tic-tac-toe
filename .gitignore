@@ -1,2 +1,4 @@
 target/
 .soroban
+node_modules
+.secret
