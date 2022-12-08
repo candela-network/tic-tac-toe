@@ -3,7 +3,7 @@ mod helper;
 mod types;
 use crate::types::{Game, GameState, PlayResult, TicTacToeEvent, EVENT_TOPIC};
 use helper::TicTacToeEngine;
-use soroban_sdk::{contractimpl, symbol, Address, BytesN, Env};
+use soroban_sdk::{contractimpl, symbol, Address, BytesN, Env, unwrap::UnwrapOptimized};
 
 pub struct TicTacToeContract;
 
@@ -16,10 +16,10 @@ impl TicTacToeContract {
         Else, the invoker of launch() will be placed in the lobby (the function returns GameState::PENDING)
     */
     pub fn launch(env: Env) -> GameState {
-        let pending: Address = env.data().get(types::GameState::PENDING).unwrap_or(Ok(env.invoker())).unwrap();
+        let pending: Address = env.data().get(types::GameState::PENDING).unwrap_or(Ok(env.invoker())).unwrap_optimized();
 
         if pending != env.invoker() {
-            let mut counter = env.data().get(GameState::COUNTER).unwrap_or(Ok(0)).unwrap();
+            let mut counter = env.data().get(GameState::COUNTER).unwrap_or(Ok(0)).unwrap_optimized();
 
             // Increment game id
             counter += 1;
