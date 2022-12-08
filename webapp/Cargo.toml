@@ -1,9 +1,0 @@
-[package]
-name = "rocket-tic-tac-toe"
-version = "0.0.0"
-workspace = "../"
-edition = "2021"
-publish = false
-
-[dependencies]
-rocket = "0.5.0-rc.2"

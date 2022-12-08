@@ -3,8 +3,10 @@ resolver = "2"
 
 members = [
     "contract",
-    "webapp"
 ]
+
+
+
 
 [profile.release-with-logs]
 inherits = "release"
